@@ -1,6 +1,6 @@
 ---
 - name: Add new Disk to extend the filesystem on Linux VM
-  hosts: 172.17.254.201
+  hosts: all
   vars_files:
     - credentials.yml
 #  vars_prompt:
