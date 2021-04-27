@@ -1,0 +1,51 @@
+- name: Find /sys/class/scsi_host
+  find:
+    path: '/sys/class/scsi_host'
+    file_type: link
+    pattern: 'host*'
+  register: _scsi_hosts
+
+- name: Rescanning for new disks
+  command: 'echo "- - -" > {{ item }}/scan'
+  changed_when: false
+  with_items: _scsi_hosts.files.path
+
+
+- name: Refresh the setup
+  setup:
+
+- name: Set fact to list disk
+  set_fact:
+    after_fact: "{{ hostvars[inventory_hostname].ansible_devices.keys() | select('string') | list }}"
+
+- name: after Disk adding
+  lineinfile:
+    path: /tmp/after.yml
+    line: "{{ hostvars[inventory_hostname].ansible_devices.keys() | select('string') | list }}"
+    create: yes
+  tags:
+    - never
+
+- name: Fetch the files to control node
+  fetch:
+    src: "{{ item }}"
+    dest: /tmp/
+    flat: yes
+  with_items:
+    - /tmp/before.yml
+    - /tmp/after.yml
+  tags:
+    - never
+    
+- name: Input the newly provisioned disk name to a file
+  vars:
+    before: "{{ lookup('file', '/tmp/before.yml') }}"
+    after: "{{ lookup('file', '/tmp/after.yml') }}"
+  lineinfile:
+    path: /tmp/new_device.yml
+    line: "{{ after | symmetric_difference(before) | first }}"
+    create: yes
+  delegate_to: localhost
+  tags:
+    - never
+

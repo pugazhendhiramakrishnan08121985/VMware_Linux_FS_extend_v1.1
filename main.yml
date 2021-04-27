@@ -1,0 +1,29 @@
+---
+- name: Add new Disk to extend the filesystem on Linux VM
+  hosts: 172.17.254.201
+  vars_files:
+    - credentials.yml
+#  vars_prompt:
+#    - name: username
+#      prompt: vcenter_username
+#      private: no
+#    - name: password
+#      prompt: vcenter_password
+#    - name: mount_point
+#      prompt: mount_point
+#      private: no
+#    - name: size_gb
+#      prompt: Disk_Size_in_GB  
+#      private: no
+  tasks:
+    - name: Import Task to collect UUID info
+      import_tasks: stat.yml
+
+    - name: Import Task to add new disk
+      import_tasks: add_disk.yml
+
+    - name: Import Task to scan the new device
+      import_tasks: scan_disk.yml
+
+    - name: Import Task to extend the filesystem
+      import_tasks: fs_extend.yml

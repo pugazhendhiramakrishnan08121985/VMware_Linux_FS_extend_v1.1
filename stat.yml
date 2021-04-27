@@ -1,0 +1,27 @@
+- name: List all available Disk 
+  debug:
+    msg: "{{ hostvars[inventory_hostname].ansible_devices.keys() | map('regex_search', 'sd.*') | select('string') | list }}"
+  tags:
+    - never
+
+- name: Save the list of Disks prior to adding new Disk
+  lineinfile:
+    path: /tmp/before.yml
+    line: "{{ hostvars[inventory_hostname].ansible_devices.keys() | select('string') | list }}"
+    create: yes
+  tags:
+    - never
+
+- name: Set fact to list disk
+  set_fact:
+    before_fact: "{{ hostvars[inventory_hostname].ansible_devices.keys() | select('string') | list }}"
+
+- name: Fetch {{ inventory_hostname }} UUID
+  shell: dmidecode -s system-serial-number | awk '{print $1$2$3$4"-"$5$6"-"$7$8$9"-"$10$11$12$13$14$15}' | cut -d'-' --complement -f1
+  register: uuid
+
+- debug:
+    msg: "The {{ inventory_hostname }} UUID is {{ uuid.stdout }}"
+  tags:
+    - never
+

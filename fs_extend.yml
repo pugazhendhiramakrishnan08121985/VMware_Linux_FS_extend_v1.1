@@ -1,0 +1,29 @@
+- name: Display the LVM
+  shell: df -TPh "{{ mount_point }}" | awk '{print $1}'| grep -v Filesystem
+  register: device
+
+- name: List the LVM
+  shell: "lvs {{ device.stdout }} | tail -n1 | awk '{print $1}'"
+  register: lvm
+
+- name: List the VG
+  shell: "lvs {{ device.stdout }} | tail -n1 | awk '{print $2}'"
+  register: vg
+
+- name: Resize the VG
+  vars:
+    new_disk: "{{ before_fact | symmetric_difference(after_fact) | first }}"
+  shell: |
+    pvcreate /dev/{{ new_disk }}
+    vgextend {{ vg.stdout }} /dev/{{ new_disk }}
+
+- name: Resize LV
+  lvol:
+    vg: "{{ vg.stdout}}"
+    lv: "{{ lvm.stdout}}"
+    size: +100%FREE
+    resizefs: yes
+
+- name: Final Size of the Filesystem
+  debug:
+    msg: "{{ mount_point }} resized"

@@ -1,0 +1,126 @@
+- name: Gather Disk facts for the server - {{ inventory_hostname }}
+  vmware_guest_disk_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ username }}"
+    password: "{{ password }}"
+    datacenter: "{{ datacenter_name }}"
+    uuid: "{{ uuid.stdout }}"
+    validate_certs: False
+  delegate_to: localhost
+  register: disk_fact
+  tags:
+    - one
+
+- lineinfile:
+    path: /tmp/disk_fact.yml
+    line: "{{ disk_fact }}"
+    create: yes
+  delegate_to: localhost
+
+- name: debug
+  debug:
+    msg: |
+      "VM  - {{ uuid.stdout }} \n DATASTORE {{ disk_fact.guest_disk_info['0'].backing_datastore }}"
+      "Length: {{ disk_fact.guest_disk_info | length }}"
+      "{{ disk_fact | to_nice_yaml }}"
+      "{{ (disk_fact.guest_disk_info | dict2items | map(attribute='value.unit_number') | map('int') | max) + 1 }}"
+      "{{ (disk_fact.guest_disk_info | dict2items | map(attribute='value.unit_number') | map('int') | max) + 2 }}"
+      "DISK {{ (disk_fact.guest_disk_info | length) + 1 }}"
+      "{{ disk_fact.guest_disk_info | length | int }}"
+      "{{ disk_fact.guest_disk_info | dict2items }}"
+  delegate_to: localhost
+  tags:
+    - never
+
+
+- name: Check the {{ disk_fact.guest_disk_info['0'].backing_datastore }} Datastore size
+  vmware_datastore_info:
+    hostname: "{{ vcenter_hostname }}"
+    username: "{{ username }}"
+    password: "{{ password }}"
+    datacenter: "{{ datacenter_name }}"
+    validate_certs: False
+    name: "{{ disk_fact.guest_disk_info['0'].backing_datastore }}"
+  delegate_to: localhost
+  register: info
+  tags:
+    - one
+- debug:
+    msg: |
+      "The Datastore {{ disk_fact.guest_disk_info['0'].backing_datastore }} Capacity - {{ item.capacity / 1024 / 1024 / 1024 }} GB"
+      "The Datastore {{ disk_fact.guest_disk_info['0'].backing_datastore }} Free Space - {{ item.freeSpace / 1024 / 1024 / 1024 }} GB"
+      "The Datastore {{ disk_fact.guest_disk_info['0'].backing_datastore }} utilization {{ item.freeSpace / item.capacity * 100 }}"
+      "{{ item.freeSpace }}"
+  loop: "{{ info.datastores }}"
+  delegate_to: localhost
+  tags:
+    - one
+
+
+
+- block:
+    - name: Add New Disk from the {{ disk_fact.guest_disk_info['0'].backing_datastore }} Datastore default
+      vmware_guest_disk:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        datacenter: "{{ datacenter_name }}"
+        validate_certs: False
+        uuid: "{{ uuid.stdout }}"
+        disk:
+          - size_gb: "{{ size_gb }}"
+            type: thin
+            datastore: "{{ disk_fact.guest_disk_info['0'].backing_datastore }}"
+            state: present
+            scsi_controller: "{{ (disk_fact.guest_disk_info['0'].controller_bus_number | int) }}"
+            unit_number: "{{ (disk_fact.guest_disk_info | dict2items | map(attribute='value.unit_number') | map('int') | max) + 1 }}"
+      register: add_disk
+      when: item.freeSpace / 1024 / 1024 / 1024 < threshold
+      loop: "{{ info.datastores }}"
+      delegate_to: localhost
+
+
+    - name: Add New Disk from the {{ disk_fact.guest_disk_info['0'].backing_datastore }} Datastore if > 8 Disk
+      vmware_guest_disk:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        datacenter: "{{ datacenter_name }}"
+        validate_certs: False
+        uuid: "{{ uuid.stdout }}"
+        disk:
+          - size_gb: "{{ size_gb }}"
+            type: thin
+            datastore: "{{ disk_fact.guest_disk_info['0'].backing_datastore }}"
+            state: present
+            scsi_controller: "{{ (disk_fact.guest_disk_info['0'].controller_bus_number | int) }}"
+            unit_number: "{{ (disk_fact.guest_disk_info | dict2items | map(attribute='value.unit_number') | map('int') | max) + 2 }}"
+      delegate_to: localhost
+      register: add_disk_2
+      when: 
+        - add_disk is succeeded and add_disk is not changed
+        - item.freeSpace / 1024 / 1024 / 1024 < threshold
+      loop: "{{ info.datastores }}"
+
+
+
+  rescue:
+    - name: Add New Disk from the {{ disk_fact.guest_disk_info['0'].backing_datastore }} Datastore if 6 disk
+      vmware_guest_disk:
+        hostname: "{{ vcenter_hostname }}"
+        username: "{{ username }}"
+        password: "{{ password }}"
+        datacenter: "{{ datacenter_name }}"
+        validate_certs: False
+        uuid: "{{ uuid.stdout }}"
+        disk:
+          - size_gb: "{{ size_gb }}"
+            type: thin
+            datastore: "{{ disk_fact.guest_disk_info['0'].backing_datastore }}"
+            state: present
+            scsi_controller: "{{ (disk_fact.guest_disk_info['0'].controller_bus_number | int) }}"
+            unit_number: "{{ (disk_fact.guest_disk_info | dict2items | map(attribute='value.unit_number') | map('int') | max) + 2 }}"
+      delegate_to: localhost
+      when: item.freeSpace / 1024 / 1024 / 1024 < threshold
+      loop: "{{ info.datastores }}"
+
